@@ -30,18 +30,6 @@ class Pack2(AbstractPack):
     assets: Dict[str, Asset2]
     raw_assets: Dict[int, Asset2]
 
-    _namelist: List[str]
-
-    @property
-    def namelist(self) -> List[str]:
-        return self._namelist
-
-    @namelist.setter
-    def namelist(self, value: List[str]):
-        self._namelist = value
-        self.assets = {}
-        self._update_assets(self._namelist)
-
     @staticmethod
     def export(assets: List[AbstractAsset], name: str, outdir: Path, raw: bool):
         """
@@ -122,9 +110,8 @@ class Pack2(AbstractPack):
             writer.seek(0x8, 0)
             writer.uint64LE(pack_length)
 
-    def __init__(self, path: Path, namelist: List[str] = None):
+    def __init__(self, path: Path, hashDict):
         super().__init__(path)
-        self._namelist = namelist
 
         with BinaryStructReader(self.path) as reader:
             assert reader.read(len(_MAGIC)) == _MAGIC, 'invalid pack2 magic'
@@ -158,10 +145,9 @@ class Pack2(AbstractPack):
                 self.raw_assets[asset.name_hash] = asset
 
         self.assets = {}
-        self._update_assets(self._namelist)
+        self._update_assets(hashDict)
 
-    def _update_assets(self, namelist: List[str] = None):
-        name_dict: Dict[int, str] = {}
+    def _update_assets(self, hashDict):
         used_hashes = []
 
         # Check for internal namelist
@@ -169,16 +155,10 @@ class Pack2(AbstractPack):
             names = self.raw_assets[_NAMELIST_HASH].get_data().strip().split(b'\n')
             for n in names:
                 hash_ = crc64(n)
-                name_dict[hash_] = n.decode('utf-8')
-
-        # Check for external namelist
-        if namelist:
-            for n in namelist:
-                hash_ = crc64(n)
-                name_dict[hash_] = n
+                hashDict[hash_] = n.decode('utf-8')
 
         # Apply names to assets
-        for name_hash, name in name_dict.items():
+        for name_hash, name in hashDict.items():
             try:
                 asset = self.raw_assets[name_hash]
                 asset.name = name
